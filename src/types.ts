@@ -4,7 +4,10 @@ export type RGB = readonly [number, number, number];
 
 export type BackgroundChoice =
   | { kind: "image"; path: string; hue: number }
-  | { kind: "color"; color: RGB; gradient: boolean };
+  | { kind: "color"; color: RGB; gradient: boolean }
+  | { kind: "palette"; colors: RGB[]; gradient: boolean };
+
+export type RenderBackground = Exclude<BackgroundChoice, { kind: "palette" }>;
 
 export type EffectChoice = "none" | "glitch" | "scanline" | "shimmer" | "pulse";
 

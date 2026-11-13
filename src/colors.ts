@@ -110,6 +110,20 @@ export function randomColor(rng: () => number = Math.random): RGB {
   return hslToRgb(hue, saturation, lightness);
 }
 
+export function generatedPalette(
+  count: number,
+  rng: () => number = Math.random,
+): RGB[] {
+  const size = Math.max(1, Math.floor(count));
+  const offset = rng() * 360;
+  const saturation = 0.55 + rng() * 0.15;
+  const lightness = 0.45 + rng() * 0.12;
+
+  return Array.from({ length: size }, (_, index) =>
+    hslToRgb(offset + (index * 360) / size, saturation, lightness),
+  );
+}
+
 export function gradientBuffer(
   size: number,
   top: RGB,

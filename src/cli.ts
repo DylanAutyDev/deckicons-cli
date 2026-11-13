@@ -30,9 +30,9 @@ Usage:
   deckicons --help      show this help
 
 Output:
-  generated/<name>.png    in a "generated" folder beside the background image
+  generated/<name>.png    image mode: beside the background image
+                          color/random/palette: inside the foreground folder
   generated/<name>.gif    when an animation effect is enabled
-  (color backgrounds write to ./generated in the current folder)
 
 Foreground icon ideas: https://simpleicons.org/
 `);
@@ -53,8 +53,7 @@ async function main(): Promise<void> {
 
   banner(version);
 
-  const fallbackOutputDir = path.resolve(process.cwd(), "generated");
-  const settings = await runWizard(fallbackOutputDir);
+  const settings = await runWizard();
 
   if (!settings) {
     return;

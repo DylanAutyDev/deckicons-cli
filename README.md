@@ -47,11 +47,12 @@ Double-click `DeckiconsCLI.bat`. It installs dependencies on first use, builds t
 ## Wizard
 
 ```text
-1. Background style             image / solid color / random color
+1. Background style             image / solid color / random color / palette
    - image                        full path + optional hue rotation (0°)
    - color                        hex value, e.g. #5865F2
    - random                       rolls a color; lock in or reroll
-2. Gradient                     optional dark-top → bright-bottom ramp (color/random)
+   - palette                      one color per icon, in filename order
+2. Gradient                     optional dark-top → bright-bottom ramp (color/random/palette)
 3. Foreground icons folder      any folder of supported images (recursive)
 4. Padding                      percent of canvas per side (default 25%)
 5. Opacity                      foreground icon opacity (default 100%)
@@ -60,7 +61,7 @@ Double-click `DeckiconsCLI.bat`. It installs dependencies on first use, builds t
 8. Confirm                      run, or open a static preview first
 ```
 
-Image mode writes to a `generated/` folder next to the background image. Color and random backgrounds write to `./generated` in the current folder.
+Image mode writes to a `generated/` folder next to the background image. Color, random, and palette modes write to `generated/` inside the foreground icons folder.
 
 ## Output
 
@@ -88,6 +89,8 @@ generated/
 **Solid color** — a flat hex fill.
 
 **Random color** — a pleasing random HSL color, shown as a swatch. Reroll until you like it, then lock it in. Random colors use the same hex/gradient path as solid colors.
+
+**Palette** — generates one color per icon, spread evenly around the hue wheel, with reroll and lock-in just like random color. Colors are assigned in filename order, so alphabetic folders make tidy color grids. Gradients work per color too.
 
 **Gradient** — a simple vertical ramp: a darker version of the chosen color at the top, the target color at the bottom.
 

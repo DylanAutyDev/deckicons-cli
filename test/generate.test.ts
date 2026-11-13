@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import sharp from "sharp";
 import { generateIcons, resolveOutputDir } from "../src/generate";
 import type { Settings } from "../src/types";
-import { cleanup, tempDir } from "./helpers";
+import { cleanup, pixelAt, tempDir } from "./helpers";
 
 async function writeIcon(file: string, color: { r: number; g: number; b: number }) {
   writeFileSync(
@@ -23,21 +23,81 @@ async function writeIcon(file: string, color: { r: number; g: number; b: number 
   );
 }
 
-test("puts image-mode output beside the background image", () => {
-  const fallback = path.join("C:", "projects", "generated");
+test("resolves output beside the background or in the foreground folder", () => {
+  const foreground = path.join("C:", "icons", "foreground");
   const background = path.join("C:", "art", "background.png");
 
   assert.equal(
-    resolveOutputDir({ kind: "image", path: background, hue: 0 }, fallback),
+    resolveOutputDir(
+      { kind: "image", path: background, hue: 0 },
+      foreground,
+    ),
     path.join("C:", "art", "generated"),
   );
   assert.equal(
     resolveOutputDir(
       { kind: "color", color: [0, 0, 0], gradient: false },
-      fallback,
+      foreground,
     ),
-    fallback,
+    path.join(foreground, "generated"),
   );
+  assert.equal(
+    resolveOutputDir(
+      { kind: "palette", colors: [[0, 0, 0]], gradient: false },
+      foreground,
+    ),
+    path.join(foreground, "generated"),
+  );
+});
+
+test("palette mode gives each icon its own background color", async () => {
+  const directory = tempDir();
+  try {
+    const foreground = path.join(directory, "foreground");
+    const output = path.join(foreground, "generated");
+    mkdirSync(foreground);
+
+    await writeIcon(path.join(foreground, "a.png"), {
+      r: 255,
+      g: 255,
+      b: 255,
+    });
+    await writeIcon(path.join(foreground, "b.png"), {
+      r: 255,
+      g: 255,
+      b: 255,
+    });
+    await writeIcon(path.join(foreground, "c.png"), {
+      r: 255,
+      g: 255,
+      b: 255,
+    });
+
+    const colors: Array<[number, number, number]> = [
+      [255, 0, 0],
+      [0, 255, 0],
+      [0, 0, 255],
+    ];
+    const result = await generateIcons({
+      foregroundDir: foreground,
+      background: { kind: "palette", colors, gradient: false },
+      padding: 25,
+      opacity: 100,
+      invert: false,
+      effects: "none",
+      outputDir: output,
+    });
+
+    assert.equal(result.errors.length, 0);
+    assert.equal(result.written.length, 3);
+
+    for (let index = 0; index < colors.length; index += 1) {
+      const png = readFileSync(result.written[index]!.png);
+      assert.deepEqual(await pixelAt(png, 2, 2), colors[index]);
+    }
+  } finally {
+    cleanup(directory);
+  }
 });
 
 test("generates lowercased PNGs and reports progress", async () => {

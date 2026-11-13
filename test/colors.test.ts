@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   darken,
+  generatedPalette,
   gradientBuffer,
   hslToRgb,
   parseHex,
@@ -61,5 +62,19 @@ test("randomColor returns a usable rgb color", () => {
   for (const channel of color) {
     assert.ok(Number.isInteger(channel));
     assert.ok(channel >= 0 && channel <= 255);
+  }
+});
+
+test("generatedPalette spreads distinct colors across the hue wheel", () => {
+  const palette = generatedPalette(6, () => 0.5);
+
+  assert.equal(palette.length, 6);
+  assert.equal(new Set(palette.map((color) => rgbToHex(color))).size, 6);
+
+  for (const color of palette) {
+    for (const channel of color) {
+      assert.ok(Number.isInteger(channel));
+      assert.ok(channel >= 0 && channel <= 255);
+    }
   }
 });

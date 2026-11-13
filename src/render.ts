@@ -1,10 +1,14 @@
 import sharp from "sharp";
 import { darken, gradientBuffer } from "./colors";
 import { alphaBounds, applyOpacityRgba, invertRgba } from "./images";
-import { CANVAS_SIZE, type BackgroundChoice, type RGB } from "./types";
+import {
+  CANVAS_SIZE,
+  type RenderBackground,
+  type RGB,
+} from "./types";
 
 export interface RenderOptions {
-  background: BackgroundChoice;
+  background: RenderBackground;
   padding: number;
   invert: boolean;
   opacity?: number;
@@ -14,7 +18,7 @@ export interface RenderOptions {
 const SVG_DENSITY = 600;
 const MAX_SOURCE_SCALE = 4;
 
-function backgroundTopColor(background: BackgroundChoice): RGB {
+function backgroundTopColor(background: RenderBackground): RGB {
   if (background.kind === "image") {
     return [0, 0, 0];
   }
@@ -22,7 +26,7 @@ function backgroundTopColor(background: BackgroundChoice): RGB {
 }
 
 export async function createCanvas(
-  background: BackgroundChoice,
+  background: RenderBackground,
   size = CANVAS_SIZE,
 ): Promise<Buffer> {
   if (background.kind === "image") {

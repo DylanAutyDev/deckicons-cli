@@ -15,12 +15,13 @@ import {
 import {
   darken,
   gradientSwatch,
+  generatedPalette,
   parseHex,
   randomColor,
   rgbToHex,
   swatch,
 } from "./colors";
-import { resolveOutputDir } from "./generate";
+import { backgroundForIndex, resolveOutputDir } from "./generate";
 import {
   findForegroundImages,
   isSupportedImage,
@@ -35,7 +36,7 @@ import {
   type Settings,
 } from "./types";
 
-type BackgroundMode = "image" | "color" | "random";
+type BackgroundMode = "image" | "color" | "random" | "palette";
 type ConfirmAction = "run" | "preview" | "cancel";
 
 const EFFECT_LABELS: Record<EffectChoice, string> = {
@@ -56,7 +57,7 @@ function expect<T>(value: T): NonNullable<Exclude<T, symbol>> {
 
 function validateDirectory(
   input: string,
-  outputDir: string,
+  background: BackgroundChoice,
 ): string | undefined {
   const value = stripQuotes(input);
   if (!value) {
@@ -70,6 +71,8 @@ function validateDirectory(
   if (!statSync(resolved).isDirectory()) {
     return "That path is not a folder.";
   }
+
+  const outputDir = resolveOutputDir(background, resolved);
   if (findForegroundImages(resolved, outputDir).length === 0) {
     return "No supported images found in that folder.";
   }
@@ -126,7 +129,7 @@ async function previewFirstIcon(settings: Settings): Promise<void> {
 
   try {
     const png = await renderIcon(first, {
-      background: settings.background,
+      background: backgroundForIndex(settings.background, 0),
       padding: settings.padding,
       invert: settings.invert,
       opacity: settings.opacity,
@@ -145,10 +148,26 @@ async function previewFirstIcon(settings: Settings): Promise<void> {
   }
 }
 
+function palettePreview(colors: RGB[], max = 24): string {
+  const shown = colors
+    .slice(0, max)
+    .map((color) => swatch(color, 2))
+    .join("");
+  const extra = colors.length > max ? ` +${colors.length - max}` : "";
+  const fallback = colors.map((color) => rgbToHex(color)).join(" ");
+
+  return `${shown || fallback}${extra}`;
+}
+
 function describeBackground(background: BackgroundChoice): string {
   if (background.kind === "image") {
     const hue = background.hue !== 0 ? ` · hue ${background.hue}°` : "";
     return `image · ${background.path}${hue}`;
+  }
+
+  if (background.kind === "palette") {
+    const gradient = background.gradient ? " · gradient" : "";
+    return `palette ${palettePreview(background.colors)} · ${background.colors.length} color${background.colors.length === 1 ? "" : "s"}${gradient}`;
   }
 
   const hex = rgbToHex(background.color);
@@ -158,9 +177,7 @@ function describeBackground(background: BackgroundChoice): string {
   return `${swatch(background.color)} ${hex}${gradient}`;
 }
 
-export async function runWizard(
-  fallbackOutputDir: string,
-): Promise<Settings | null> {
+export async function runWizard(): Promise<Settings | null> {
   intro("New icon set");
 
   const mode = expect(
@@ -171,6 +188,11 @@ export async function runWizard(
         { value: "image", label: "Image", hint: "use a background picture" },
         { value: "color", label: "Solid color", hint: "enter a hex value" },
         { value: "random", label: "Random color", hint: "roll a color for me" },
+        {
+          value: "palette",
+          label: "Palette",
+          hint: "a different color for every icon",
+        },
       ],
     }),
   );
@@ -211,7 +233,7 @@ export async function runWizard(
       hue,
     };
   } else {
-    let color: RGB;
+    let color: RGB | null = null;
 
     if (mode === "color") {
       const hexInput = expect(
@@ -225,9 +247,9 @@ export async function runWizard(
         }),
       );
       color = parseHex(hexInput)!;
-    } else {
-      color = randomColor();
-      log.info(`Rolled ${swatch(color)} ${rgbToHex(color)}`);
+    } else if (mode === "random") {
+      let rolled = randomColor();
+      log.info(`Rolled ${swatch(rolled)} ${rgbToHex(rolled)}`);
 
       let locked = false;
       while (!locked) {
@@ -236,7 +258,7 @@ export async function runWizard(
             message: "Keep this color?",
             initialValue: "lock",
             options: [
-              { value: "lock", label: "Lock it in", hint: rgbToHex(color) },
+              { value: "lock", label: "Lock it in", hint: rgbToHex(rolled) },
               { value: "reroll", label: "Reroll", hint: "try another color" },
             ],
           }),
@@ -245,10 +267,12 @@ export async function runWizard(
         if (action === "lock") {
           locked = true;
         } else {
-          color = randomColor();
-          log.info(`Rolled ${swatch(color)} ${rgbToHex(color)}`);
+          rolled = randomColor();
+          log.info(`Rolled ${swatch(rolled)} ${rgbToHex(rolled)}`);
         }
       }
+
+      color = rolled;
     }
 
     const gradient = expect(
@@ -258,28 +282,78 @@ export async function runWizard(
       }),
     );
 
-    if (gradient) {
-      log.info(
-        `Gradient ${gradientSwatch(darken(color), color)} ${rgbToHex(darken(color))} → ${rgbToHex(color)}`,
-      );
+    if (mode === "palette") {
+      background = { kind: "palette", colors: [], gradient };
+    } else {
+      if (!color) {
+        throw new Error("Background color is missing.");
+      }
+
+      if (gradient) {
+        log.info(
+          `Gradient ${gradientSwatch(darken(color), color)} ${rgbToHex(darken(color))} → ${rgbToHex(color)}`,
+        );
+      }
+
+      background = { kind: "color", color, gradient };
     }
-
-    background = { kind: "color", color, gradient };
   }
-
-  const outputDir = resolveOutputDir(background, fallbackOutputDir);
 
   const foregroundInput = expect(
     await text({
       message: "Foreground icons folder",
-      validate: (value) => validateDirectory(value ?? "", outputDir),
+      validate: (value) => validateDirectory(value ?? "", background),
     }),
   );
   const foregroundDir = path.resolve(stripQuotes(foregroundInput));
+  const outputDir = resolveOutputDir(background, foregroundDir);
   const foregroundImages = findForegroundImages(foregroundDir, outputDir);
   log.info(
     `Found ${foregroundImages.length} icon${foregroundImages.length === 1 ? "" : "s"} to work with.`,
   );
+
+  if (background.kind === "palette") {
+    let colors = generatedPalette(foregroundImages.length);
+    log.info(`Palette ${palettePreview(colors)}`);
+
+    let locked = false;
+    while (!locked) {
+      const action = expect(
+        await select<"lock" | "reroll">({
+          message: `Colors for ${foregroundImages.length} icon${foregroundImages.length === 1 ? "" : "s"}`,
+          initialValue: "lock",
+          options: [
+            {
+              value: "lock",
+              label: "Lock it in",
+              hint: "assign colors in filename order",
+            },
+            {
+              value: "reroll",
+              label: "Reroll",
+              hint: "roll a new palette",
+            },
+          ],
+        }),
+      );
+
+      if (action === "lock") {
+        locked = true;
+      } else {
+        colors = generatedPalette(foregroundImages.length);
+        log.info(`Palette ${palettePreview(colors)}`);
+      }
+    }
+
+    background = { kind: "palette", colors, gradient: background.gradient };
+
+    if (background.gradient) {
+      const first = background.colors[0]!;
+      log.info(
+        `Gradient ${gradientSwatch(darken(first), first)} applied to every palette color.`,
+      );
+    }
+  }
 
   const paddingInput = expect(
     await text({

@@ -7,6 +7,7 @@ import { renderIcon } from "./render";
 import type {
   BackgroundChoice,
   GenerationResult,
+  RenderBackground,
   Settings,
   WrittenIcon,
 } from "./types";
@@ -19,12 +20,31 @@ export type ProgressCallback = (
 
 export function resolveOutputDir(
   background: BackgroundChoice,
-  fallback: string,
+  foregroundDir: string,
 ): string {
   if (background.kind === "image") {
     return path.join(path.dirname(background.path), "generated");
   }
-  return fallback;
+  return path.join(foregroundDir, "generated");
+}
+
+export function backgroundForIndex(
+  background: BackgroundChoice,
+  index: number,
+): RenderBackground {
+  if (background.kind !== "palette") {
+    return background;
+  }
+
+  if (background.colors.length === 0) {
+    throw new Error("palette has no colors");
+  }
+
+  return {
+    kind: "color",
+    color: background.colors[index % background.colors.length]!,
+    gradient: background.gradient,
+  };
 }
 
 export async function generateIcons(
@@ -47,7 +67,7 @@ export async function generateIcons(
 
     try {
       const png = await renderIcon(job.file, {
-        background: settings.background,
+        background: backgroundForIndex(settings.background, index),
         padding: settings.padding,
         invert: settings.invert,
         opacity: settings.opacity,
