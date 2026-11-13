@@ -1,74 +1,89 @@
 import pc from "picocolors";
+import { lerpRgb } from "./colors";
+import type { RGB } from "./types";
 
-const GLYPHS: Record<string, string[]> = {
-  d: ["11110", "10001", "10001", "10001", "11110"],
-  e: ["11111", "10000", "11110", "10000", "11111"],
-  c: ["01111", "10000", "10000", "10000", "01111"],
-  k: ["10001", "10010", "11100", "10010", "10001"],
-  i: ["11111", "00100", "00100", "00100", "11111"],
-  o: ["01110", "10001", "10001", "10001", "01110"],
-  n: ["10001", "11001", "10101", "10011", "10001"],
-  s: ["01111", "10000", "01110", "00001", "11110"],
-};
+const START: RGB = [34, 211, 238];
+const END: RGB = [236, 72, 153];
+const BORDER: RGB = [100, 116, 139];
+const KEY_TOP_LEFT: RGB = [34, 211, 238];
+const KEY_TOP_RIGHT: RGB = [99, 102, 241];
+const KEY_BOTTOM_LEFT: RGB = [168, 85, 247];
+const KEY_BOTTOM_RIGHT: RGB = [236, 72, 153];
 
-const WORD = "deckicons";
+const WORDMARK = [
+  "█▀▄ █▀▀ █▀▀ █ █ █ █▀█ █▄ █ █▀▀",
+  "█ █ █▀▀ █   █▀▄ █ █ █ █ ▀█ ▀▀█",
+  "▀▀  ▀▀▀ ▀▀▀ ▀ ▀ ▀ ▀▀  ▀  ▀ ▀▀▀",
+];
 
-const START: [number, number, number] = [34, 211, 238];
-const END: [number, number, number] = [232, 121, 249];
+const useColor = pc.isColorSupported;
 
-function colorAt(index: number, total: number): [number, number, number] {
-  const t = total <= 1 ? 0 : index / (total - 1);
-  return [
-    Math.round(START[0] + (END[0] - START[0]) * t),
-    Math.round(START[1] + (END[1] - START[1]) * t),
-    Math.round(START[2] + (END[2] - START[2]) * t),
-  ];
+function fg(rgb: RGB, text: string): string {
+  if (!useColor) {
+    return text;
+  }
+  return `\u001b[38;2;${rgb[0]};${rgb[1]};${rgb[2]}m${text}\u001b[0m`;
 }
 
-function wordmark(): string[] {
-  const rows: string[] = [];
-
-  for (let row = 0; row < 5; row += 1) {
-    rows.push(
-      WORD.split("")
-        .map((letter) => GLYPHS[letter]![row]!)
-        .join(" "),
-    );
+function gradientText(text: string, row: number): string {
+  if (!useColor) {
+    return text;
   }
 
-  return rows;
+  const chars = Array.from(text);
+  return chars
+    .map((char, index) => {
+      if (char === " ") {
+        return " ";
+      }
+
+      const t = Math.min(
+        1,
+        (index / Math.max(1, chars.length - 1)) * 0.75 + row * 0.05,
+      );
+      return fg(lerpRgb(START, END, t), char);
+    })
+    .join("");
+}
+
+function keycapRow(index: number): string {
+  const edge = fg(BORDER, "│");
+
+  switch (index) {
+    case 0:
+      return fg(BORDER, "╭──────────────────╮");
+    case 1:
+      return `${edge}${" ".repeat(18)}${edge}`;
+    case 2:
+    case 3:
+      return `${edge}  ${fg(KEY_TOP_LEFT, "████")}      ${fg(KEY_TOP_RIGHT, "████")}  ${edge}`;
+    case 4:
+      return `${edge}${" ".repeat(18)}${edge}`;
+    case 5:
+    case 6:
+      return `${edge}  ${fg(KEY_BOTTOM_LEFT, "████")}      ${fg(KEY_BOTTOM_RIGHT, "████")}  ${edge}`;
+    default:
+      return fg(BORDER, "╰──────────────────╯");
+  }
 }
 
 export function banner(version: string): void {
-  const rows = wordmark();
-  const width = rows[0]?.length ?? 0;
-  const useColor = pc.isColorSupported;
+  const right = [
+    "",
+    "",
+    gradientText(WORDMARK[0]!, 0),
+    gradientText(WORDMARK[1]!, 1),
+    gradientText(WORDMARK[2]!, 2),
+    pc.dim("icons that click"),
+    pc.dim(`v${version} · deck icon composer`),
+    "",
+  ];
 
   console.log("");
 
-  for (const row of rows) {
-    if (!useColor) {
-      console.log(`  ${row.replaceAll("1", "█").replaceAll("0", " ")}`);
-      continue;
-    }
-
-    let line = "";
-    for (let index = 0; index < row.length; index += 1) {
-      const char = row[index];
-      if (char === "1") {
-        const [r, g, b] = colorAt(index, width);
-        line += `\u001b[38;2;${r};${g};${b}m█\u001b[0m`;
-      } else {
-        line += " ";
-      }
-    }
-    console.log(`  ${line}`);
+  for (let row = 0; row < 8; row += 1) {
+    console.log(`  ${keycapRow(row)}    ${right[row] ?? ""}`.trimEnd());
   }
 
-  console.log("");
-  console.log(
-    `  ${pc.dim("icons that click")}  ${pc.dim("·")}  ${pc.dim(`v${version}`)}`,
-  );
-  console.log(`  ${pc.dim("stream deck + launchpad icon composer")}`);
   console.log("");
 }
