@@ -12,6 +12,103 @@ export const GLITCH_FRAME_INDICES = [4, 5, 13, 14] as const;
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value));
 
+const BAYER_8 = [
+  [0, 32, 8, 40, 2, 34, 10, 42],
+  [48, 16, 56, 24, 50, 18, 58, 26],
+  [12, 44, 4, 36, 14, 46, 6, 38],
+  [60, 28, 52, 20, 62, 30, 54, 22],
+  [3, 35, 11, 43, 1, 33, 9, 41],
+  [51, 19, 59, 27, 49, 17, 57, 25],
+  [15, 47, 7, 39, 13, 45, 5, 37],
+  [63, 31, 55, 23, 61, 29, 53, 21],
+];
+
+const DITHER_SPREAD = 24;
+const DITHER_EDGE_LIMIT = 32;
+
+function buildPaletteLookup(palette: number[][]): Uint8Array {
+  const lookup = new Uint8Array(32 * 32 * 32);
+
+  for (let r5 = 0; r5 < 32; r5 += 1) {
+    for (let g5 = 0; g5 < 32; g5 += 1) {
+      for (let b5 = 0; b5 < 32; b5 += 1) {
+        const r = (r5 << 3) + 4;
+        const g = (g5 << 3) + 4;
+        const b = (b5 << 3) + 4;
+        let bestIndex = 0;
+        let bestDistance = Number.POSITIVE_INFINITY;
+
+        for (let index = 0; index < palette.length; index += 1) {
+          const entry = palette[index]!;
+          const dr = entry[0]! - r;
+          const dg = entry[1]! - g;
+          const db = entry[2]! - b;
+          const distance = dr * dr + dg * dg + db * db;
+
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestIndex = index;
+          }
+        }
+
+        lookup[(r5 << 10) | (g5 << 5) | b5] = bestIndex;
+      }
+    }
+  }
+
+  return lookup;
+}
+
+function applyDithering(
+  frame: Buffer,
+  width: number,
+  height: number,
+  palette: number[][],
+  lookup: Uint8Array,
+): Uint8Array {
+  const indexed = applyPalette(new Uint8Array(frame), palette, "rgb565");
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const offset = (y * width + x) * 4;
+      let delta = 0;
+
+      if (x > 0) {
+        const left = offset - 4;
+        delta += Math.abs(frame[offset]! - frame[left]!);
+        delta += Math.abs(frame[offset + 1]! - frame[left + 1]!);
+        delta += Math.abs(frame[offset + 2]! - frame[left + 2]!);
+      }
+
+      if (y > 0) {
+        const above = offset - width * 4;
+        delta += Math.abs(frame[offset]! - frame[above]!);
+        delta += Math.abs(frame[offset + 1]! - frame[above + 1]!);
+        delta += Math.abs(frame[offset + 2]! - frame[above + 2]!);
+      }
+
+      if (delta === 0 || delta > DITHER_EDGE_LIMIT) {
+        continue;
+      }
+
+      const threshold =
+        (((BAYER_8[y & 7]![x & 7]! + 0.5) / 64) - 0.5) * DITHER_SPREAD;
+
+      const r =
+        clamp(Math.round(frame[offset]! + threshold), 0, 255) >> 3;
+      const g =
+        clamp(Math.round(frame[offset + 1]! + threshold), 0, 255) >> 3;
+      const b =
+        clamp(Math.round(frame[offset + 2]! + threshold), 0, 255) >> 3;
+
+      indexed[y * width + x] =
+        lookup[(r << 10) | (g << 5) | b]!;
+    }
+  }
+
+  return indexed;
+}
+
 function blend(
   frame: Buffer,
   offset: number,
@@ -242,9 +339,10 @@ export function encodeGif(
   const palette = quantize(new Uint8Array(paletteFrame), 256, {
     format: "rgb565",
   });
+  const lookup = buildPaletteLookup(palette);
 
   frames.forEach((frame, index) => {
-    const indexed = applyPalette(new Uint8Array(frame), palette, "rgb565");
+    const indexed = applyDithering(frame, width, height, palette, lookup);
     encoder.writeFrame(indexed, width, height, {
       palette,
       delay,
