@@ -5,11 +5,14 @@
 Compose crisp 144×144 icons for Stream Deck and launchpad-style devices. Give Deckicons a folder of foreground icons plus a background image or color, and it produces a matching icon set — with optional gradient backgrounds and a subtle animated glitch effect.
 
 ```
-████  █████ ████ █   █ █████ ████ ████ █   █ █████
-█     █     █    █  █    █   █    █  █ ██  █ █
-█     ████  █    ███     █   █    █  █ █ █ █ ████
-█     █     █    █  █    █   █    █  █ █  ██    █
-████  █████ ████ █   █ █████ ████ ████ █   █ █████
+  ╭──────────────────╮
+  │                  │
+  │  ████      ████  │     █▀▄ █▀▀ █▀▀ █ █ █ █▀█ █▄ █ █▀▀
+  │  ████      ████  │     █ █ █▀▀ █   █▀▄ █ █ █ █ ▀█ ▀▀█
+  │                  │     ▀▀  ▀▀▀ ▀▀▀ ▀ ▀ ▀ ▀▀  ▀  ▀ ▀▀▀
+  │  ████      ████  │     icons that click
+  │  ████      ████  │     v0.1.0 · deck icon composer
+  ╰──────────────────╯
 ```
 
 ## Why
