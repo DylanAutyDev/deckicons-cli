@@ -4,18 +4,21 @@ import type { RGB } from "./types";
 
 const START: RGB = [34, 211, 238];
 const END: RGB = [236, 72, 153];
-const BORDER: RGB = [100, 116, 139];
-const KEY_TOP_LEFT: RGB = [34, 211, 238];
-const KEY_TOP_RIGHT: RGB = [99, 102, 241];
-const KEY_BOTTOM_LEFT: RGB = [168, 85, 247];
-const KEY_BOTTOM_RIGHT: RGB = [236, 72, 153];
 
-const WORDMARK = [
-  "█▀▄ █▀▀ █▀▀ █ █ █ █▀█ █▄ █ █▀▀",
-  "█ █ █▀▀ █   █▀▄ █ █ █ █ ▀█ ▀▀█",
-  "▀▀  ▀▀▀ ▀▀▀ ▀ ▀ ▀ ▀▀  ▀  ▀ ▀▀▀",
+const SQUARES: RGB[] = [
+  [34, 211, 238],
+  [99, 102, 241],
+  [168, 85, 247],
+  [236, 72, 153],
 ];
 
+const WORDMARK = [
+  "█▀▄  █▀▀  █▀▀  █ █  █  █▀▀  █▀█  █▄ █  █▀▀",
+  "█ █  █▀▀  █    █▀▄  █  █    █ █  █ ▀█  ▀▀█",
+  "▀▀   ▀▀▀  ▀▀▀  ▀ ▀  ▀  ▀▀▀  ▀▀▀  ▀  ▀  ▀▀▀",
+];
+
+const MARK_WIDTH = 27;
 const useColor = pc.isColorSupported;
 
 function fg(rgb: RGB, text: string): string {
@@ -46,43 +49,22 @@ function gradientText(text: string, row: number): string {
     .join("");
 }
 
-function keycapRow(index: number): string {
-  const edge = fg(BORDER, "│");
-
-  switch (index) {
-    case 0:
-      return fg(BORDER, "╭──────────────────╮");
-    case 1:
-      return `${edge}${" ".repeat(18)}${edge}`;
-    case 2:
-    case 3:
-      return `${edge}  ${fg(KEY_TOP_LEFT, "████")}      ${fg(KEY_TOP_RIGHT, "████")}  ${edge}`;
-    case 4:
-      return `${edge}${" ".repeat(18)}${edge}`;
-    case 5:
-    case 6:
-      return `${edge}  ${fg(KEY_BOTTOM_LEFT, "████")}      ${fg(KEY_BOTTOM_RIGHT, "████")}  ${edge}`;
-    default:
-      return fg(BORDER, "╰──────────────────╯");
-  }
-}
+const MARK = SQUARES.map((color) => fg(color, "██████")).join(" ");
 
 export function banner(version: string): void {
+  const left = [MARK, MARK, MARK, " ".repeat(MARK_WIDTH), " ".repeat(MARK_WIDTH)];
   const right = [
-    "",
-    "",
     gradientText(WORDMARK[0]!, 0),
     gradientText(WORDMARK[1]!, 1),
     gradientText(WORDMARK[2]!, 2),
     pc.dim("icons that click"),
     pc.dim(`v${version} · deck icon composer`),
-    "",
   ];
 
   console.log("");
 
-  for (let row = 0; row < 8; row += 1) {
-    console.log(`  ${keycapRow(row)}    ${right[row] ?? ""}`.trimEnd());
+  for (let row = 0; row < right.length; row += 1) {
+    console.log(`  ${left[row]}    ${right[row]}`.trimEnd());
   }
 
   console.log("");

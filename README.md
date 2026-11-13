@@ -5,14 +5,11 @@
 Compose crisp 144×144 icons for Stream Deck and launchpad-style devices. Give Deckicons a folder of foreground icons plus a background image or color, and it produces a matching icon set — with optional gradient backgrounds and a subtle animated glitch effect.
 
 ```
-  ╭──────────────────╮
-  │                  │
-  │  ████      ████  │     █▀▄ █▀▀ █▀▀ █ █ █ █▀█ █▄ █ █▀▀
-  │  ████      ████  │     █ █ █▀▀ █   █▀▄ █ █ █ █ ▀█ ▀▀█
-  │                  │     ▀▀  ▀▀▀ ▀▀▀ ▀ ▀ ▀ ▀▀  ▀  ▀ ▀▀▀
-  │  ████      ████  │     icons that click
-  │  ████      ████  │     v0.1.0 · deck icon composer
-  ╰──────────────────╯
+  ██████ ██████ ██████ ██████    █▀▄  █▀▀  █▀▀  █ █  █  █▀▀  █▀█  █▄ █  █▀▀
+  ██████ ██████ ██████ ██████    █ █  █▀▀  █    █▀▄  █  █    █ █  █ ▀█  ▀▀█
+  ██████ ██████ ██████ ██████    ▀▀   ▀▀▀  ▀▀▀  ▀ ▀  ▀  ▀▀▀  ▀▀▀  ▀  ▀  ▀▀▀
+                                 icons that click
+                                 v0.1.0 · deck icon composer
 ```
 
 ## Why
@@ -61,8 +58,10 @@ Double-click `DeckiconsCLI.bat`. It installs dependencies on first use, builds t
 5. Opacity                      foreground icon opacity (default 100%)
 6. Invert                       flips foreground colors, keeps transparency
 7. Effects                      none, glitch, scanline, shimmer, or pulse
-8. Confirm                      run, or open a static preview first
+8. Confirm                      run, preview, or go back and change any step
 ```
+
+After a preview you can return to the summary, choose **Change settings**, and jump back to the background, foreground folder, padding, opacity, invert, or effects step without starting over.
 
 Image mode writes to a `generated/` folder next to the background image. Color, random, and palette modes write to `generated/` inside the foreground icons folder.
 
@@ -99,7 +98,7 @@ generated/
 
 ## Effects
 
-Effects are written as a GIF next to the PNG and use a 20-frame, ~1.8 s loop.
+Effects are written as a GIF next to the PNG and use a 20-frame, ~1.8 s loop. Gradient-heavy frames are ordered-dithered during GIF palette mapping so backgrounds stay smooth instead of banding.
 
 - **Subtle glitch** — two short cyberpunk stutters with horizontal band shifts and a light channel split. Slowed down so it reads without feeling frantic.
 - **Scanline sweep** — a soft horizontal light band drifts down the icon.

@@ -14,8 +14,8 @@ import {
 } from "@clack/prompts";
 import {
   darken,
-  gradientSwatch,
   generatedPalette,
+  gradientSwatch,
   parseHex,
   randomColor,
   rgbToHex,
@@ -37,7 +37,15 @@ import {
 } from "./types";
 
 type BackgroundMode = "image" | "color" | "random" | "palette";
-type ConfirmAction = "run" | "preview" | "cancel";
+type ConfirmAction = "run" | "preview" | "edit" | "cancel";
+type EditStep =
+  | "background"
+  | "foreground"
+  | "padding"
+  | "opacity"
+  | "invert"
+  | "effects"
+  | "back";
 
 const EFFECT_LABELS: Record<EffectChoice, string> = {
   none: "none",
@@ -177,13 +185,38 @@ function describeBackground(background: BackgroundChoice): string {
   return `${swatch(background.color)} ${hex}${gradient}`;
 }
 
-export async function runWizard(): Promise<Settings | null> {
-  intro("New icon set");
+function summaryText(settings: Settings, iconCount: number): string {
+  const paddingPx = Math.round((CANVAS_SIZE * settings.padding) / 100);
 
+  return [
+    `Foreground   ${settings.foregroundDir}`,
+    `Icons        ${iconCount}`,
+    `Background   ${describeBackground(settings.background)}`,
+    `Canvas       ${CANVAS_SIZE} × ${CANVAS_SIZE}`,
+    `Padding      ${settings.padding}% (${paddingPx}px per side)`,
+    `Opacity      ${settings.opacity}%`,
+    `Invert       ${settings.invert ? "yes" : "no"}`,
+    `Effects      ${settings.effects === "none" ? "none" : `${EFFECT_LABELS[settings.effects]} (.gif)`}`,
+    `Output       ${settings.outputDir}`,
+  ].join("\n");
+}
+
+async function askGradient(initialValue: boolean): Promise<boolean> {
+  return expect(
+    await confirm({
+      message: "Add a vertical gradient? (dark top, brighter bottom)",
+      initialValue,
+    }),
+  );
+}
+
+async function askBackground(
+  current?: BackgroundChoice,
+): Promise<BackgroundChoice> {
   const mode = expect(
     await select<BackgroundMode>({
       message: "Background style",
-      initialValue: "image",
+      initialValue: current?.kind ?? "image",
       options: [
         { value: "image", label: "Image", hint: "use a background picture" },
         { value: "color", label: "Solid color", hint: "enter a hex value" },
@@ -197,21 +230,21 @@ export async function runWizard(): Promise<Settings | null> {
     }),
   );
 
-  let background: BackgroundChoice;
-
   if (mode === "image") {
     const imageInput = expect(
       await text({
         message: "Path to background image",
+        initialValue: current?.kind === "image" ? current.path : undefined,
         validate: (value) => validateBackgroundImage(value ?? ""),
       }),
     );
+    const hueDefault = current?.kind === "image" ? current.hue : 0;
     const hueInput = expect(
       await text({
         message: "Background hue rotation (degrees)",
         placeholder: "0",
-        defaultValue: "0",
-        initialValue: "0",
+        defaultValue: String(hueDefault),
+        initialValue: String(hueDefault),
         validate: (value) => {
           const parsed = Number(value ?? "");
           if (!Number.isInteger(parsed) || parsed < 0 || parsed > 360) {
@@ -227,112 +260,53 @@ export async function runWizard(): Promise<Settings | null> {
       log.info(`Background hue rotated ${hue}°.`);
     }
 
-    background = {
+    return {
       kind: "image",
       path: path.resolve(stripQuotes(imageInput)),
       hue,
     };
-  } else {
-    let color: RGB | null = null;
-
-    if (mode === "color") {
-      const hexInput = expect(
-        await text({
-          message: "Background color (hex)",
-          placeholder: "e.g. #5865F2",
-          validate: (value) =>
-            value && parseHex(value)
-              ? undefined
-              : "Use a hex color like #5865F2.",
-        }),
-      );
-      color = parseHex(hexInput)!;
-    } else if (mode === "random") {
-      let rolled = randomColor();
-      log.info(`Rolled ${swatch(rolled)} ${rgbToHex(rolled)}`);
-
-      let locked = false;
-      while (!locked) {
-        const action = expect(
-          await select<"lock" | "reroll">({
-            message: "Keep this color?",
-            initialValue: "lock",
-            options: [
-              { value: "lock", label: "Lock it in", hint: rgbToHex(rolled) },
-              { value: "reroll", label: "Reroll", hint: "try another color" },
-            ],
-          }),
-        );
-
-        if (action === "lock") {
-          locked = true;
-        } else {
-          rolled = randomColor();
-          log.info(`Rolled ${swatch(rolled)} ${rgbToHex(rolled)}`);
-        }
-      }
-
-      color = rolled;
-    }
-
-    const gradient = expect(
-      await confirm({
-        message: "Add a vertical gradient? (dark top, brighter bottom)",
-        initialValue: false,
-      }),
-    );
-
-    if (mode === "palette") {
-      background = { kind: "palette", colors: [], gradient };
-    } else {
-      if (!color) {
-        throw new Error("Background color is missing.");
-      }
-
-      if (gradient) {
-        log.info(
-          `Gradient ${gradientSwatch(darken(color), color)} ${rgbToHex(darken(color))} → ${rgbToHex(color)}`,
-        );
-      }
-
-      background = { kind: "color", color, gradient };
-    }
   }
 
-  const foregroundInput = expect(
-    await text({
-      message: "Foreground icons folder",
-      validate: (value) => validateDirectory(value ?? "", background),
-    }),
-  );
-  const foregroundDir = path.resolve(stripQuotes(foregroundInput));
-  const outputDir = resolveOutputDir(background, foregroundDir);
-  const foregroundImages = findForegroundImages(foregroundDir, outputDir);
-  log.info(
-    `Found ${foregroundImages.length} icon${foregroundImages.length === 1 ? "" : "s"} to work with.`,
-  );
+  const gradientDefault =
+    current && current.kind !== "image" ? current.gradient : false;
 
-  if (background.kind === "palette") {
-    let colors = generatedPalette(foregroundImages.length);
-    log.info(`Palette ${palettePreview(colors)}`);
+  if (mode === "palette") {
+    return {
+      kind: "palette",
+      colors: [],
+      gradient: await askGradient(gradientDefault),
+    };
+  }
+
+  let color: RGB | null = null;
+
+  if (mode === "color") {
+    const hexInput = expect(
+      await text({
+        message: "Background color (hex)",
+        placeholder: "e.g. #5865F2",
+        initialValue:
+          current?.kind === "color" ? rgbToHex(current.color) : undefined,
+        validate: (value) =>
+          value && parseHex(value)
+            ? undefined
+            : "Use a hex color like #5865F2.",
+      }),
+    );
+    color = parseHex(hexInput)!;
+  } else {
+    let rolled = randomColor();
+    log.info(`Rolled ${swatch(rolled)} ${rgbToHex(rolled)}`);
 
     let locked = false;
     while (!locked) {
       const action = expect(
         await select<"lock" | "reroll">({
-          message: `Colors for ${foregroundImages.length} icon${foregroundImages.length === 1 ? "" : "s"}`,
+          message: "Keep this color?",
           initialValue: "lock",
           options: [
-            {
-              value: "lock",
-              label: "Lock it in",
-              hint: "assign colors in filename order",
-            },
-            {
-              value: "reroll",
-              label: "Reroll",
-              hint: "roll a new palette",
-            },
+            { value: "lock", label: "Lock it in", hint: rgbToHex(rolled) },
+            { value: "reroll", label: "Reroll", hint: "try another color" },
           ],
         }),
       );
@@ -340,27 +314,107 @@ export async function runWizard(): Promise<Settings | null> {
       if (action === "lock") {
         locked = true;
       } else {
-        colors = generatedPalette(foregroundImages.length);
-        log.info(`Palette ${palettePreview(colors)}`);
+        rolled = randomColor();
+        log.info(`Rolled ${swatch(rolled)} ${rgbToHex(rolled)}`);
       }
     }
 
-    background = { kind: "palette", colors, gradient: background.gradient };
+    color = rolled;
+  }
 
-    if (background.gradient) {
-      const first = background.colors[0]!;
-      log.info(
-        `Gradient ${gradientSwatch(darken(first), first)} applied to every palette color.`,
-      );
+  const gradient = await askGradient(gradientDefault);
+
+  if (!color) {
+    throw new Error("Background color is missing.");
+  }
+
+  if (gradient) {
+    log.info(
+      `Gradient ${gradientSwatch(darken(color), color)} ${rgbToHex(darken(color))} → ${rgbToHex(color)}`,
+    );
+  }
+
+  return { kind: "color", color, gradient };
+}
+
+async function askForeground(
+  background: BackgroundChoice,
+  currentDir?: string,
+): Promise<{ dir: string; images: string[] }> {
+  const foregroundInput = expect(
+    await text({
+      message: "Foreground icons folder",
+      initialValue: currentDir,
+      validate: (value) => validateDirectory(value ?? "", background),
+    }),
+  );
+  const dir = path.resolve(stripQuotes(foregroundInput));
+  const outputDir = resolveOutputDir(background, dir);
+  const images = findForegroundImages(dir, outputDir);
+  log.info(
+    `Found ${images.length} icon${images.length === 1 ? "" : "s"} to work with.`,
+  );
+
+  return { dir, images };
+}
+
+async function askPalette(
+  count: number,
+  gradient: boolean,
+  seed?: RGB[],
+): Promise<RGB[]> {
+  const size = Math.max(1, count);
+  let colors =
+    seed && seed.length === size ? seed : generatedPalette(size);
+
+  log.info(`Palette ${palettePreview(colors)}`);
+
+  let locked = false;
+  while (!locked) {
+    const action = expect(
+      await select<"lock" | "reroll">({
+        message: `Colors for ${size} icon${size === 1 ? "" : "s"}`,
+        initialValue: "lock",
+        options: [
+          {
+            value: "lock",
+            label: "Lock it in",
+            hint: "assign colors in filename order",
+          },
+          {
+            value: "reroll",
+            label: "Reroll",
+            hint: "roll a new palette",
+          },
+        ],
+      }),
+    );
+
+    if (action === "lock") {
+      locked = true;
+    } else {
+      colors = generatedPalette(size);
+      log.info(`Palette ${palettePreview(colors)}`);
     }
   }
 
-  const paddingInput = expect(
+  if (gradient) {
+    const first = colors[0]!;
+    log.info(
+      `Gradient ${gradientSwatch(darken(first), first)} applied to every palette color.`,
+    );
+  }
+
+  return colors;
+}
+
+async function askPadding(current = 25): Promise<number> {
+  const input = expect(
     await text({
       message: "Padding around icons (%)",
       placeholder: "25",
-      defaultValue: "25",
-      initialValue: "25",
+      defaultValue: String(current),
+      initialValue: String(current),
       validate: (value) => {
         const parsed = Number(value ?? "");
         if (!Number.isInteger(parsed) || parsed < 0 || parsed > 45) {
@@ -370,18 +424,22 @@ export async function runWizard(): Promise<Settings | null> {
       },
     }),
   );
-  const padding = Number(paddingInput);
+  const padding = Number(input);
   const paddingPx = Math.round((CANVAS_SIZE * padding) / 100);
   log.info(
     `Icons get ${paddingPx}px of breathing room per side on a ${CANVAS_SIZE}px canvas.`,
   );
 
-  const opacityInput = expect(
+  return padding;
+}
+
+async function askOpacity(current = 100): Promise<number> {
+  const input = expect(
     await text({
       message: "Icon opacity (%)",
       placeholder: "100",
-      defaultValue: "100",
-      initialValue: "100",
+      defaultValue: String(current),
+      initialValue: String(current),
       validate: (value) => {
         const parsed = Number(value ?? "");
         if (!Number.isInteger(parsed) || parsed < 0 || parsed > 100) {
@@ -391,23 +449,30 @@ export async function runWizard(): Promise<Settings | null> {
       },
     }),
   );
-  const opacity = Number(opacityInput);
+  const opacity = Number(input);
 
   if (opacity < 100) {
     log.info(`Icons render at ${opacity}% opacity.`);
   }
 
-  const invert = expect(
+  return opacity;
+}
+
+async function askInvert(current = false): Promise<boolean> {
+  return expect(
     await confirm({
-      message: "Invert the icon overlays? (great for dark logos on light backgrounds)",
-      initialValue: false,
+      message:
+        "Invert the icon overlays? (great for dark logos on light backgrounds)",
+      initialValue: current,
     }),
   );
+}
 
-  const effects = expect(
+async function askEffects(current: EffectChoice = "none"): Promise<EffectChoice> {
+  return expect(
     await select<EffectChoice>({
       message: "Effects",
-      initialValue: "none",
+      initialValue: current,
       options: [
         { value: "none", label: "None", hint: "static PNG only" },
         {
@@ -433,32 +498,41 @@ export async function runWizard(): Promise<Settings | null> {
       ],
     }),
   );
+}
 
-  const settings: Settings = {
-    foregroundDir,
-    background,
-    padding,
-    opacity,
-    invert,
-    effects,
-    outputDir,
-  };
+export async function runWizard(): Promise<Settings | null> {
+  intro("New icon set");
 
-  const summary = [
-    `Foreground   ${foregroundDir}`,
-    `Icons        ${foregroundImages.length}`,
-    `Background   ${describeBackground(background)}`,
-    `Canvas       ${CANVAS_SIZE} × ${CANVAS_SIZE}`,
-    `Padding      ${padding}% (${paddingPx}px per side)`,
-    `Opacity      ${opacity}%`,
-    `Invert       ${invert ? "yes" : "no"}`,
-    `Effects      ${effects === "none" ? "none" : `${EFFECT_LABELS[effects]} (.gif)`}`,
-    `Output       ${outputDir}`,
-  ].join("\n");
+  let background = await askBackground();
+  let foreground = await askForeground(background);
 
-  note(summary, "Render settings");
+  if (background.kind === "palette") {
+    const colors = await askPalette(
+      foreground.images.length,
+      background.gradient,
+    );
+    background = { ...background, colors };
+  }
+
+  let padding = await askPadding();
+  let opacity = await askOpacity();
+  let invert = await askInvert();
+  let effects = await askEffects();
 
   for (;;) {
+    const outputDir = resolveOutputDir(background, foreground.dir);
+    const settings: Settings = {
+      foregroundDir: foreground.dir,
+      background,
+      padding,
+      opacity,
+      invert,
+      effects,
+      outputDir,
+    };
+
+    note(summaryText(settings, foreground.images.length), "Render settings");
+
     const action = expect(
       await select<ConfirmAction>({
         message: "Ready to render?",
@@ -469,6 +543,11 @@ export async function runWizard(): Promise<Settings | null> {
             value: "preview",
             label: "Preview first icon",
             hint: "opens a static PNG preview",
+          },
+          {
+            value: "edit",
+            label: "Change settings",
+            hint: "go back to a previous step",
           },
           { value: "cancel", label: "Cancel", hint: "change nothing" },
         ],
@@ -482,7 +561,95 @@ export async function runWizard(): Promise<Settings | null> {
       cancel("No icons were generated.");
       return null;
     }
+    if (action === "preview") {
+      await previewFirstIcon(settings);
+      continue;
+    }
 
-    await previewFirstIcon(settings);
+    const step = expect(
+      await select<EditStep>({
+        message: "Which step?",
+        initialValue: "back",
+        options: [
+          {
+            value: "back",
+            label: "Back to summary",
+            hint: "keep everything as is",
+          },
+          {
+            value: "background",
+            label: "Background",
+            hint: "style, color, hue, or gradient",
+          },
+          {
+            value: "foreground",
+            label: "Foreground folder",
+            hint: "change the icon set",
+          },
+          {
+            value: "padding",
+            label: "Padding",
+            hint: `${padding}%`,
+          },
+          {
+            value: "opacity",
+            label: "Opacity",
+            hint: `${opacity}%`,
+          },
+          {
+            value: "invert",
+            label: "Invert",
+            hint: invert ? "yes" : "no",
+          },
+          {
+            value: "effects",
+            label: "Effects",
+            hint: EFFECT_LABELS[effects],
+          },
+        ],
+      }),
+    );
+
+    if (step === "back") {
+      continue;
+    }
+
+    if (step === "background") {
+      const updated = await askBackground(background);
+
+      if (updated.kind === "palette") {
+        const colors = await askPalette(
+          foreground.images.length,
+          updated.gradient,
+          background.kind === "palette" ? background.colors : undefined,
+        );
+        background = { ...updated, colors };
+      } else {
+        background = updated;
+      }
+    } else if (step === "foreground") {
+      const updated = await askForeground(background, foreground.dir);
+      foreground = updated;
+
+      if (
+        background.kind === "palette" &&
+        background.colors.length !== foreground.images.length
+      ) {
+        log.warn("Icon count changed. Rolling a fresh palette.");
+        const colors = await askPalette(
+          foreground.images.length,
+          background.gradient,
+        );
+        background = { ...background, colors };
+      }
+    } else if (step === "padding") {
+      padding = await askPadding(padding);
+    } else if (step === "opacity") {
+      opacity = await askOpacity(opacity);
+    } else if (step === "invert") {
+      invert = await askInvert(invert);
+    } else if (step === "effects") {
+      effects = await askEffects(effects);
+    }
   }
 }
